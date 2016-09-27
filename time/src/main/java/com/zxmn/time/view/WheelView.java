@@ -15,6 +15,7 @@ import android.widget.Scroller;
 
 import com.zxmn.time.R;
 import com.zxmn.time.adapter.WheelAdapter;
+import com.zxmn.time.listeners.OnItemSelectedListener;
 import com.zxmn.time.listeners.OnWheelScrollListener;
 import com.zxmn.time.utils.DensityUtils;
 import com.zxmn.time.utils.Logger;
@@ -54,7 +55,9 @@ public class WheelView extends View implements OnWheelScrollListener, WheelAdapt
 
     private WheelTouchHelper mTouchHelper;
 
-    private Scroller mScroller;
+    private OnItemSelectedListener mSelectedListener;
+
+    private int mLastPosition = 0;
 
     public WheelView(Context context) {
         this(context, null);
@@ -81,7 +84,6 @@ public class WheelView extends View implements OnWheelScrollListener, WheelAdapt
         //init clear paint
         initClearPaint();
         mTouchHelper = new WheelTouchHelper(this);
-        mScroller = new Scroller(getContext());
     }
 
     private void initClearPaint() {
@@ -218,7 +220,9 @@ public class WheelView extends View implements OnWheelScrollListener, WheelAdapt
         if (newState == OnWheelScrollListener.STATE_IDLE) {
             //scroll to nearest position
             int top = amend(mScrollY + mUpperEdge);
+
             int firstPosition = top / mItemHeight;
+
             if (top % mItemHeight < mItemHeight / 2) {
                 smoothScrollToPosition(firstPosition);
             } else {
@@ -230,11 +234,14 @@ public class WheelView extends View implements OnWheelScrollListener, WheelAdapt
     public void smoothScrollToPosition(int position) {
         int destY = amend(position * mItemHeight - mUpperEdge);
         int dy = mScrollY - destY;
-
+        Logger.d("destY " + destY);
+        Logger.d("position " + position);
         if (mTotalHeight - mScrollY < mItemHeight && destY == 0) {
-            //需要特殊处理
-            dy = mItemHeight - mTotalHeight + mScrollY;
+            dy = (mItemHeight - mTotalHeight + mScrollY) - mItemHeight;
         }
+        if (position != mLastPosition && mSelectedListener != null)
+            mSelectedListener.onItemSelected(position);
+        mLastPosition = position;
         mTouchHelper.smoothScrollBy(dy);
     }
 
@@ -276,6 +283,9 @@ public class WheelView extends View implements OnWheelScrollListener, WheelAdapt
         }
         mScrollY = position * mItemHeight + getMeasuredHeight() / 2;
         invalidate();
+        if (position != mLastPosition && mSelectedListener != null)
+            mSelectedListener.onItemSelected(position);
+        mLastPosition = position;
     }
 
     public void setCurrentPosition(int position) {
@@ -285,5 +295,8 @@ public class WheelView extends View implements OnWheelScrollListener, WheelAdapt
         //reset scrollY
         mScrollY = amend(position * mItemHeight - mUpperEdge);
         invalidate();
+        if (position != mLastPosition && mSelectedListener != null)
+            mSelectedListener.onItemSelected(position);
+        mLastPosition = position;
     }
 }
