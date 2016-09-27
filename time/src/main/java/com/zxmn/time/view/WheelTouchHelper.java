@@ -27,6 +27,10 @@ public class WheelTouchHelper {
 
     private int mViewHeight;
 
+    private int mState = OnWheelScrollListener.STATE_IDLE;
+
+    private boolean mIsFling = false;
+
     public WheelTouchHelper(WheelView view) {
         mListener = view;
         mVelocityTracker = VelocityTracker.obtain();
@@ -50,6 +54,10 @@ public class WheelTouchHelper {
                 mVelocityTracker.addMovement(event);
                 break;
             case MotionEvent.ACTION_MOVE:
+                if (mState != OnWheelScrollListener.STATE_DRAG) {
+                    mState = OnWheelScrollListener.STATE_DRAG;
+                    notifyStateChanged(mState);
+                }
                 mVelocityTracker.addMovement(event);
                 mVelocityTracker.computeCurrentVelocity(1000);
                 float y = event.getY();
@@ -63,6 +71,13 @@ public class WheelTouchHelper {
             case MotionEvent.ACTION_UP:
                 mLastFlingY = 0;
                 mScroller.fling(0, 0, 0, (int) mVelocityTracker.getYVelocity(), 0, 0, -mMaxFlingDistance, mMaxFlingDistance);
+                if (mVelocityTracker.getYVelocity() != 0) {
+                    mState = OnWheelScrollListener.STATE_FLING;
+                    mIsFling = true;
+                } else {
+                    mState = OnWheelScrollListener.STATE_IDLE;
+                }
+                notifyStateChanged(mState);
                 mView.invalidate();
                 break;
             case MotionEvent.ACTION_CANCEL:
@@ -72,11 +87,28 @@ public class WheelTouchHelper {
         return true;
     }
 
+    private void notifyStateChanged(int state) {
+        if (mListener != null)
+            mListener.onScrollStateChanged(state);
+    }
+
     public void computeScroll() {
         if (mScroller.computeScrollOffset()) {
             int dy = mLastFlingY - mScroller.getCurrY();
             mLastFlingY = mScroller.getCurrY();
             mListener.onScrolled(dy);
+        } else {
+            if (mState == OnWheelScrollListener.STATE_IDLE || !mIsFling)
+                return;
+            mState = OnWheelScrollListener.STATE_IDLE;
+            notifyStateChanged(mState);
+            mIsFling = false;
         }
+    }
+
+    public void smoothScrollBy(int dy) {
+        mLastFlingY = 0;
+        mScroller.startScroll(0, 0, 0, dy,500);
+        mView.invalidate();
     }
 }

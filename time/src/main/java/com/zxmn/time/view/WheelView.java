@@ -11,11 +11,13 @@ import android.text.TextPaint;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
+import android.widget.Scroller;
 
 import com.zxmn.time.R;
 import com.zxmn.time.adapter.WheelAdapter;
 import com.zxmn.time.listeners.OnWheelScrollListener;
 import com.zxmn.time.utils.DensityUtils;
+import com.zxmn.time.utils.Logger;
 
 
 /**
@@ -52,6 +54,7 @@ public class WheelView extends View implements OnWheelScrollListener, WheelAdapt
 
     private WheelTouchHelper mTouchHelper;
 
+    private Scroller mScroller;
 
     public WheelView(Context context) {
         this(context, null);
@@ -63,7 +66,7 @@ public class WheelView extends View implements OnWheelScrollListener, WheelAdapt
     }
 
     private void setup() {
-        mTextSize = DensityUtils.dip2px(getContext(), 15);
+        mTextSize = getContext().getResources().getDimensionPixelSize(R.dimen.wheel_text_size);
         //init colors
         mHighLightColor = ContextCompat.getColor(getContext(), R.color.wheel_high_light_color);
         mNormalColor = ContextCompat.getColor(getContext(), R.color.wheel_normal_color);
@@ -78,6 +81,7 @@ public class WheelView extends View implements OnWheelScrollListener, WheelAdapt
         //init clear paint
         initClearPaint();
         mTouchHelper = new WheelTouchHelper(this);
+        mScroller = new Scroller(getContext());
     }
 
     private void initClearPaint() {
@@ -141,20 +145,34 @@ public class WheelView extends View implements OnWheelScrollListener, WheelAdapt
         super.onDraw(canvas);
         if (mAdapter == null)
             return;
+        //first we draw normal texts
         drawContent(canvas);
+        //then clear center area
+        clearCenterArea(canvas);
+        //draw scaled text
+        drawFilteredText(canvas);
+        //draw two lines
         drawEdges(canvas);
     }
 
+    private void clearCenterArea(Canvas canvas) {
+        canvas.drawRect(0, mUpperEdge, getMeasuredWidth(), mLowerEdge, mClearPaint);
+    }
+
     private void drawContent(Canvas canvas) {
+        drawTexts(mNormalPaint, canvas);
+    }
+
+    private void drawTexts(Paint paint, Canvas canvas) {
         int firstPosition = mScrollY / mItemHeight;
         float top = -mScrollY % mItemHeight;
         int itemCount = (int) Math.ceil((getMeasuredHeight() - top) / mItemHeight);
         float x = getMeasuredWidth() / 2;
-        Paint.FontMetrics fontMetrics = mNormalPaint.getFontMetrics();
+        Paint.FontMetrics fontMetrics = paint.getFontMetrics();
         for (int i = 0; i < itemCount; i++) {
             String content = mAdapter.getItem(firstPosition);
             int baseline = (int) ((top + mItemHeight + top - fontMetrics.bottom - fontMetrics.top) / 2);
-            canvas.drawText(content, x - mNormalPaint.measureText(content) / 2, baseline, mNormalPaint);
+            canvas.drawText(content, x - paint.measureText(content) / 2, baseline, paint);
             top += mItemHeight;
             if (++firstPosition >= mAdapter.getItemCount()) {
                 firstPosition = 0;
@@ -163,11 +181,16 @@ public class WheelView extends View implements OnWheelScrollListener, WheelAdapt
     }
 
     private void drawEdges(Canvas canvas) {
-        canvas.drawRect(0, mUpperEdge, getMeasuredWidth(), mLowerEdge, mClearPaint);
         canvas.drawLine(0, mUpperEdge, getMeasuredWidth(), mUpperEdge, mLinesPaint);
         canvas.drawLine(0, mLowerEdge, getMeasuredWidth(), mLowerEdge, mLinesPaint);
     }
 
+    private void drawFilteredText(Canvas canvas) {
+        canvas.save(Canvas.CLIP_SAVE_FLAG);
+        canvas.clipRect(0, mUpperEdge, getMeasuredWidth(), mLowerEdge);
+        drawTexts(mScaledPaint, canvas);
+        canvas.restoreToCount(Canvas.CLIP_SAVE_FLAG);
+    }
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
@@ -177,13 +200,47 @@ public class WheelView extends View implements OnWheelScrollListener, WheelAdapt
 
     @Override
     public void onScrolled(int dy) {
-        mScrollY += dy;
-        if (mScrollY >= mTotalHeight) {
-            mScrollY -= mTotalHeight;
-        } else if (mScrollY < 0) {
-            mScrollY += mTotalHeight;
-        }
+        mScrollY = amend(mScrollY + dy);
         invalidate();
+    }
+
+    private int amend(int y) {
+        if (y >= mTotalHeight) {
+            y -= mTotalHeight;
+        } else if (y < 0) {
+            y += mTotalHeight;
+        }
+        return y;
+    }
+
+    @Override
+    public void onScrollStateChanged(int newState) {
+        if (newState == OnWheelScrollListener.STATE_IDLE) {
+            //scroll to nearest position
+            int top = amend(mScrollY + mUpperEdge);
+            int firstPosition = top / mItemHeight;
+            if (top % mItemHeight < mItemHeight / 2) {
+                smoothScrollToPosition(firstPosition);
+            } else {
+                smoothScrollToPosition(firstPosition + 1);
+            }
+        }
+    }
+
+    public void smoothScrollToPosition(int position) {
+        int destY = amend(position * mItemHeight - mUpperEdge);
+        int dy = mScrollY - destY;
+
+        if (mTotalHeight - mScrollY < mItemHeight && destY == 0) {
+            //需要特殊处理
+            dy = mItemHeight - mTotalHeight + mScrollY;
+        }
+        mTouchHelper.smoothScrollBy(dy);
+    }
+
+    public int getCurrentPosition() {
+        int top = amend(mScrollY + mUpperEdge);
+        return top / mItemHeight;
     }
 
     public void setScaledFactor(float factor) {
@@ -225,7 +282,8 @@ public class WheelView extends View implements OnWheelScrollListener, WheelAdapt
         if (position < 0 || mAdapter == null || position >= mAdapter.getItemCount()) {
             return;
         }
-        //
+        //reset scrollY
+        mScrollY = amend(position * mItemHeight - mUpperEdge);
         invalidate();
     }
 }
